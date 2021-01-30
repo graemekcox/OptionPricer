@@ -3,32 +3,6 @@
 
 #include "OptionPricer.h"
 
-#include <iostream>
-#include <vector>
-#include <string>
-
-#include <cpprest/http_client.h>
-
-#include <cpprest/http_listener.h>
-#include <cpprest/filestream.h>
-
-#define _USE_MATH_DEFINES
-#include <math.h> // For Black-scholes model
-
-#if defined(_WIN32) && !defined(__cplusplus_winrt)
-// Extra includes for Windows desktop.
-#include <windows.h>
-
-#include <Shellapi.h>
-#endif
-using namespace utility;                    // Common utilities like string conversions
-using namespace web;                        // Common features like URIs.
-using namespace web::http;                  // Common HTTP functionality
-using namespace web::http::client;          // HTTP client features
-using namespace concurrency::streams;       // Asynchronous streams
-using namespace web::http::oauth2::experimental;
-using namespace web::http::experimental::listener;
-
 
 
 
@@ -380,7 +354,7 @@ static const utility::string_t s_auth_endpoint  = U("https://login.questrade.com
 static const utility::string_t s_token_endpoint = U("https://login.questrade.com/oauth2/token");
 static const utility::string_t s_redirect_uri   = U("http://localhost:8888/");
 
-static const std::string api_server = "https://api01.iq.questrade.com/"; // FIXME This should be returned in our auth flow
+static const std::string api_server = "https://api06.iq.questrade.com/"; // FIXME This should be returned in our auth flow
 
 http_client_config m_http_config;
 oauth2_config m_oauth2_config(s_qtrade_key, s_qtrade_secret, s_auth_endpoint, s_token_endpoint, s_redirect_uri);
@@ -441,16 +415,6 @@ public:
     }
 };
 
-// TODO move to separate header
-struct Position {
-    utility::string_t symbol;
-    int symbol_id=0;
-    double open_quantity=0;
-    double cur_market_val=0;
-    double cur_price=0;
-    double avg_entry_price=0;
-    double total_cost=0; // Total cost of position
-};
 
 utility::string_t get_userid() // Return user id
 {
@@ -538,10 +502,111 @@ void get_ticker() // Return user id
     }
 }
 
+std::tm convert_to_time(const std::string& dt) {
+    std::tm date;
+    // FIXME Don't think hours,min and sec are saved properly
+    sscanf(dt.c_str(), "%4d-%2d-%02dT%02d:%2d:%2d",
+        &date.tm_year, &date.tm_mon, &date.tm_mday, &date.tm_hour, &date.tm_min, &date.tm_sec);
+
+    //printf("Time is %0d %0d %0d %02:%02:%02", date.tm_year, date.tm_mon, date.tm_mday, date.tm_hour, date.tm_min, date.tm_sec);
+
+    return date;
+}
 
 void get_option_data(int id) {
 
+    const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id)) +"/options";
+    http_client api(uri(utility::conversions::to_string_t(api_url)), m_http_config);
+
+    ucout << "Requesting Option Data for id:" << id << std::endl;
+
+    const json::value& ret_json = api.request(methods::GET).get().extract_json().get();
+    //ucout << "Information: " << ret_json
+    //    << std::endl;
+
+    if (ret_json.has_field(U("optionChain"))) {
+        auto options = ret_json.at(U("optionChain")).as_array();
+
+        ucout << "Num of tickers returned =" << options.size() << std::endl;
+        
+        // Indiviual option
+
+        // TODO Should specify which expiry to look at
+        // Get closest expiry 
+        auto opt = options[0];
+
+        //utility::string_t desc = opt.at(U("description")).as_string();
+        //std::string exp = utility::conversions::to_utf8string(opt.at(U("expiryDate")).as_string());
+        //std::tm expiry = convert_to_time( exp); // TODO Could sort based on this expiry
+
+        auto chain_per_root = opt.at(U("chainPerRoot")).as_array();
+
+        // ChainPerRoot
+        auto cpr = chain_per_root[0];
+
+        // Options chain has 
+
+        ucout << "Chain per root size = " << cpr.at(U("optionRoot")).as_string() << std::endl;
+        auto chain_per_strike = cpr.at(U("chainPerStrikePrice")).as_array();
+
+        for (int i = 0; i < 5; i++) {
+
+            // TODO Maybe start at index = current stock price. Then just look at OTM calls?
+            auto cps = chain_per_strike[i];
+            ucout << "Strike=" << cps.at(U("strikePrice")).as_double() << " Call_id = "<< cps.at(U("callSymbolId")) << std::endl;
+            // TODO Make separate here to grab greeks
+        }
+        //utility::string_t opt_root = chain_per_root.at(U("optionRoot")).as_string();
+
+        //if (opt.has_field(U("chainPerRoot"))) {
+        //    auto strikes = opt.at(U("chainPerRoot")).as_array();
+
+        //    auto strike = strikes[0]; // Should loop through, maybe starting ATM?
+
+        //    double strike_price = opt.at(U("strikePrice")).as_double();
+        //    int call_symbol_id = opt.at(U("callSymbolId")).as_integer();
+        //    int put_symbol_id = opt.at(U("putSymbolId")).as_integer();
+
+        //    ucout << opt_root << " Strike=" << strike_price << " Call ID=" << call_symbol_id << " Put ID=" << put_symbol_id << std::endl;
+        //}
+
+
+        //if (opt.has_field(U("ChainPerExpiryDate"))) {
+        //    ucout << " chainperexpirydate" << std::endl;
+        //}
+
+        //ucout << ticker << std::endl;
+    }
+    else {
+        ucout << "Error finding 'optionChain' key" << std::endl;
+    }
 }
+
+void get_ticker_data(int id) {
+
+    const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id));
+    http_client api(uri(utility::conversions::to_string_t(api_url)), m_http_config);
+
+    ucout << "Requesting Ticker Data for id:" << id << std::endl;
+
+    const json::value& ret_json = api.request(methods::GET).get().extract_json().get();
+    ucout << "Information: " << ret_json
+        << std::endl;
+
+    auto symbols = ret_json.at(U("symbols")).as_array();
+    auto symbol = symbols[0];
+    utility::string_t sym = symbol.at(U("symbol")).as_string();
+    double high_price = symbol.at(U("highPrice52")).as_double();
+
+    int avg_vol_3mon = symbol.at(U("averageVol3Months")).as_integer();
+    int avg_vol_20day = symbol.at(U("averageVol20Days")).as_integer();
+
+    int outstanding_shares = symbol.at(U("outstandingShares")).as_integer();
+
+    ucout << sym << " : high = " << high_price << "\nAvg Vol 3mon = " << avg_vol_3mon << " 20day = " << avg_vol_20day;
+    ucout << "\n Outstanding Shares = " << outstanding_shares << std::endl;
+}
+
 
 void get_current_pos(utility::string_t id, std::vector<Position> & positions) 
 {
@@ -584,40 +649,6 @@ Project Ideas:
 - use Black Scholes Model to try and calculate fair price 
 */
 
-// Standard normal probability density function
-double norm_pdf(const double& x) {
-    return (1.0 / (pow(2 * M_PI, 0.5))) * exp(-0.5 * x * x);
-}
-double norm_cdf(const double& x) {
-    double k = 1.0 / (1.0 + 0.2316419 * x);
-    double k_sum = k * (0.319381530 + k * (-0.356563782 + k * (1.781477937 + k * (-1.821255978 + 1.330274429 * k))));
-
-    if (x >= 0.0) {
-        return (1.0 - (1.0 / (pow(2 * M_PI, 0.5))) * exp(-0.5 * x * x) * k_sum);
-    }
-    else {
-        return 1.0 - norm_cdf(-x);
-    }
-}
-// This calculates d_j, for j in {1,2}. This term appears in the closed
-// form solution for the European call or put price
-double d_j(const int& j, const double& S, const double& K, const double& r, const double& v, const double& T) {
-    return (log(S / K) + (r + (pow(-1, j - 1)) * 0.5 * v * v) * T) / (v * (pow(T, 0.5)));
-}
-
-double get_bsm_estimate(const double& S, const double& K, const double& r, const double& v, const double& T) {
-    /*
-        C = Call option price
-        S = Current stock (or other underlaying)
-        K = strike price
-        r = Risk-free interest rate
-        t = time to maturity
-        N = a normal distribution
-
-        C = S*N(d1) - Ke^(-rt)*N(d2) 
-        */
-    return S * norm_cdf(d_j(1, S, K, r, v, T)) - K * exp(-r * T) * norm_cdf(d_j(2, S, K, r, v, T));
-}
 
 
 int main(int argc, char* argv[])
@@ -639,38 +670,31 @@ int main(int argc, char* argv[])
     //qtrade_session_sample qtrade;
     //qtrade.run();
 
-    utility::string_t userid = get_userid();
+    std::tm temp = convert_to_time("2021-02-05T00:00:00.000000-05:00");
     
-    std::vector<Position> positions;
-    std::vector<Symbol> valid_symbols;
-    get_current_pos(userid, positions);
+    get_option_data(19719);
+    //get_ticker_data(19719);
 
+    //utility::string_t userid = get_userid();
+    //std::vector<Position> positions;
+    //std::vector<Symbol> valid_symbols;
+    //get_current_pos(userid, positions);
 
-    for (int i = 0; i < positions.size(); i++) {
-        ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares worth a total of $"
-            << positions[i].cur_market_val << std::endl;
+    //for (int i = 0; i < positions.size(); i++) {
+    //    ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares worth a total of $"
+    //        << positions[i].cur_market_val << std::endl;
 
-        if (positions[i].open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
-            Symbol sym(positions[i].symbol_id);
+    //    if (positions[i].open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
+    //        Symbol sym(positions[i].symbol_id);
 
-            if (sym.has_options) // Make sure that this ticker actually has options
-                valid_symbols.push_back(sym);
-        }
-    };
+    //        if (sym.has_options) // Make sure that this ticker actually has options
+    //            valid_symbols.push_back(sym);
+    //    }
+    //};
    
     //for (int i = 0; i < valid_symbols.size(); i++) {
-    //    //fetch_option_data(valid_symbols[i].symbol_id);
+    //    get_option_data(valid_symbols[i].symbol_id);
     //}
-
-    // FIXME This is just an example. Replace with actual option prices
-    double S = 100.0; // Underlying price
-    double K = 100.0; // Strike price
-    double r = 0.05; // Risk free rate(5%)
-    double v = 0.2; // volatility of the underlying (20%)
-    double T = 1.0; // One year until expiry
-    double C = get_bsm_estimate(S, K, r, v, T);
-
-    std::cout << "Estimated call price is $" << C << std::endl;
 
     std::cout << "Done" << std::endl;
     return 0;

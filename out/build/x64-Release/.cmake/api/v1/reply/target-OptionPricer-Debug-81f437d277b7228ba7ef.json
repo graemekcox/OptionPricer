@@ -143,7 +143,9 @@
 			"name" : "Header Files",
 			"sourceIndexes" : 
 			[
-				1
+				1,
+				2,
+				3
 			]
 		}
 	],
@@ -158,6 +160,16 @@
 		{
 			"backtrace" : 2,
 			"path" : "OptionPricer.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"path" : "includes/stock_types.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"path" : "includes/option_funcs.h",
 			"sourceGroupIndex" : 1
 		}
 	],
