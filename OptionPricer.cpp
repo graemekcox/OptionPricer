@@ -256,7 +256,16 @@ std::tm convert_to_time(const std::string& dt) {
     return date;
 }
 
-void get_option_data(int id) {
+
+/*
+    function: get_option_data
+    Parameters
+        int id = API Symbol Identifer. Ex: AAPL = 8049
+        optionmap opt_map = Map to store option chain data we'll use to make requests later
+        int num_expiry = Number of options expiration dates to loop through. Defaults to 1, which is weekly options;
+        int num_option_chain = Number of strike prices to loop through. Defaults to 10, with index=0 being the most ITM call option
+*/
+void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_option_chain=10) {
 
     const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id)) +"/options";
     http_client api(uri(utility::conversions::to_string_t(api_url)), m_http_config);
@@ -270,25 +279,8 @@ void get_option_data(int id) {
     if (ret_json.has_field(U("optionChain"))) {
         auto options = ret_json.at(U("optionChain")).as_array();
      
-        for (int exp_cnt = 0; exp_cnt < 1; exp_cnt++) { // FIXME For now, just use closest expiry
+        for (int exp_cnt = 0; exp_cnt < num_expiry; exp_cnt++) {
             auto opt = options[exp_cnt];
-
-            // Container to store all requested option data
-            // Store options chains by expiration date
-            //std::map<std::string, std::vector< std::map<std::string, Option>>> option_map;
-            optionmap opt_map;
-
-            /*
-                OptionMap  std::map< expiry, array of options>
-                    |
-                    --> Feb 12th
-                        [0] --> {strike, rho, id}
-                        [1] --> {strike, rho, id}
-                    --> Feb 19th
-                        [0] --> {strike, rho, id}
-                        [1] --> {strike, rho, id}
-                    .....
-            */
 
             utility::string_t desc = opt.at(U("description")).as_string();
             std::string expiry = utility::conversions::to_utf8string(opt.at(U("expiryDate")).as_string());
@@ -298,7 +290,7 @@ void get_option_data(int id) {
             auto cpr = chain_per_root[0]; // TODO check when this type has more than 1 chain_per_root
             auto chain_per_strike = cpr.at(U("chainPerStrikePrice")).as_array();
 
-            for (int i = 0; i < 10; i++) { // FIXME Temp constraint to keep option_chain small 
+            for (int i = 0; i < num_option_chain; i++) { // FIXME Temp constraint to keep option_chain small 
                 Option option;
                 // TODO Maybe start at index = current stock price. Then just look at OTM calls?
                 auto cps = chain_per_strike[i];
@@ -310,8 +302,6 @@ void get_option_data(int id) {
 
                 opt_map[expiry].push_back(option);
             }
-
-            std::cout << "Option chain has lenght = " << opt_map[expiry].size() << std::endl;
         }
     }
     else {
@@ -402,18 +392,32 @@ int main(int argc, char* argv[])
         m_http_config.set_oauth2(m_oauth2_config);
     }
 
-    //qtrade_session_sample qtrade;
-    //qtrade.run();
-
-    std::tm temp = convert_to_time("2021-02-05T00:00:00.000000-05:00");
-    
     // GME = 19719 -> option_chain_size = 217
     // AAPL = 8049 -> option_chain_size = 79
     // BB.TO = 4117087 -> option_chain_size = 55
     // BB = 4117088 -> option_chain_size = 56
     // PLTR = 32466046 -> option_chain_size = 53
+    
+    // Store options chains by expiration date
+    /*
+        OptionMap  std::map< expiry, array of options>
+            |
+            --> Feb 12th
+                [0] --> {strike, rho, id}
+                [1] --> {strike, rho, id}
+            --> Feb 19th
+                [0] --> {strike, rho, id}
+                [1] --> {strike, rho, id}
+            .....
+    */
 
-    get_option_data(8049);
+    optionmap opt_map;
+    get_option_data(8049, opt_map);
+    for (auto& x : opt_map) {
+        std::cout << x.first << " Size=" << x.second.size() << std::endl;
+    }
+
+
     //get_ticker_data(19719);
 
     //utility::string_t userid = get_userid();
