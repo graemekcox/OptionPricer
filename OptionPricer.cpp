@@ -89,7 +89,7 @@ static const utility::string_t s_auth_endpoint  = U("https://login.questrade.com
 static const utility::string_t s_token_endpoint = U("https://login.questrade.com/oauth2/token");
 static const utility::string_t s_redirect_uri   = U("http://localhost:8888/");
 
-static const std::string api_server = "https://api06.iq.questrade.com/"; // FIXME This should be returned in our auth flow
+static const std::string api_server = "https://api07.iq.questrade.com/"; // FIXME This should be returned in our auth flow
 
 http_client_config m_http_config;
 oauth2_config m_oauth2_config(s_qtrade_key, s_qtrade_secret, s_auth_endpoint, s_token_endpoint, s_redirect_uri);
@@ -154,6 +154,11 @@ struct Option {
     int id;
     double strike;
     std::string expiry;
+    double volatility;
+    double delta;
+    double gamma;
+    double theta;
+    double vega;
     double rho;
 };
 
@@ -265,8 +270,8 @@ std::tm convert_to_time(const std::string& dt) {
         int num_expiry = Number of options expiration dates to loop through. Defaults to 1, which is weekly options;
         int num_option_chain = Number of strike prices to loop through. Defaults to 10, with index=0 being the most ITM call option
 */
-void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_option_chain=10) {
-
+void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_option_chain=10)
+{
     const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id)) +"/options";
     http_client api(uri(utility::conversions::to_string_t(api_url)), m_http_config);
 
@@ -294,7 +299,7 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
                 Option option;
                 // TODO Maybe start at index = current stock price. Then just look at OTM calls?
                 auto cps = chain_per_strike[i];
-                ucout << "Strike=" << cps.at(U("strikePrice")).as_double() << " Call_id = " << cps.at(U("callSymbolId")).as_integer() << std::endl;
+                //ucout << "Strike=" << cps.at(U("strikePrice")).as_double() << " Call_id = " << cps.at(U("callSymbolId")).as_integer() << std::endl;
 
                 option.strike = cps.at(U("strikePrice")).as_double();
                 option.id = cps.at(U("callSymbolId")).as_integer(); // FIXME Hardcode to only look at calls for now
@@ -306,6 +311,58 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
     }
     else {
         ucout << "Error finding 'optionChain' key" << std::endl;
+    }
+}
+
+
+void get_option_market_quotes(optionmap& opt_map)
+{
+    //const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id)) + "/options";
+    const std::string api_url = api_server + "v1/markets/quotes/options";
+
+    std::string exp = "2021-02-19T00:00:00.000000-05:00"; // Array of options is stored by expiry date
+    
+    std::vector<Option> temp_array = opt_map[exp];
+    std::vector<int> temp_ids;
+    for (const auto& ind : temp_array)
+        temp_ids.push_back(ind.id);
+
+    web::json::value postData = web::json::value::object();
+
+    // FIXME Trying to pass filters leads to "Invalid or malformed argument 
+    //postData[U("filters")] = json::value::object();
+    //postData[U("filters")][U("underlyingId")] = json::value::number(8049);
+    //postData[U("filters")][U("expiryDate")] = json::value::string(U("2021 - 02 - 05T00:00 : 00.000000 - 05 : 00"));
+    //postData[U("filters")][U("minStrikePrice")] = json::value::number(100);
+    //postData[U("filters")][U("optionType")] = json::value::string(U("Call"));
+
+    postData[U("optionIds")] = json::value::array();
+    for (int i = 0; i < temp_ids.size(); i++)
+        postData[U("optionIds")][i] = temp_ids[i];
+
+    http_client api(uri(utility::conversions::to_string_t(api_url)), m_http_config);
+
+    web::http::http_request postReq(methods::POST);
+    postReq.set_body(postData.to_string().c_str());
+
+    const json::value& ret_json = api.request(postReq).get().extract_json().get();
+    //ucout << "Information: " << ret_json << std::endl;
+
+    // Parse response data, and update our option_map with the quote data.
+    if (ret_json.has_field(U("optionQuotes"))) {
+        auto options = ret_json.at(U("optionQuotes")).as_array();
+
+        // TODO I'm assuming the optionQuotes are returned in the same order as the ID's order in the body
+        for (int i = 0; i < options.size(); i++) {
+            auto opt = options[i];
+
+            opt_map[exp][i].volatility = opt.at(U("volatility")).as_double();
+            opt_map[exp][i].delta = opt.at(U("delta")).as_double();
+            opt_map[exp][i].gamma = opt.at(U("gamma")).as_double();
+            opt_map[exp][i].theta = opt.at(U("theta")).as_double();
+            opt_map[exp][i].vega = opt.at(U("vega")).as_double();
+            opt_map[exp][i].rho = opt.at(U("rho")).as_double();
+        }
     }
 }
 
@@ -417,7 +474,9 @@ int main(int argc, char* argv[])
         std::cout << x.first << " Size=" << x.second.size() << std::endl;
     }
 
+    // Now need to fill in all option greeks since we have option IDs.
 
+    get_option_market_quotes(opt_map);
     //get_ticker_data(19719);
 
     //utility::string_t userid = get_userid();
