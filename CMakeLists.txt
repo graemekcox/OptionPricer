@@ -10,7 +10,7 @@ project ("OptionPricer")
 # TODO: Add tests and install targets if needed.
 find_package(cpprestsdk CONFIG REQUIRED)
 
-add_executable (OptionPricer "OptionPricer.cpp" "OptionPricer.h" "includes/stock_types.h" "includes/option_funcs.h")
+add_executable (OptionPricer "OptionPricer.cpp" "OptionPricer.h" "includes/stock_types.h" "includes/option_funcs.h" "includes/Symbol.h")
 
 
 target_link_libraries(OptionPricer PRIVATE cpprestsdk::cpprest cpprestsdk::cpprestsdk_zlib_internal cpprestsdk::cpprestsdk_brotli_internal)

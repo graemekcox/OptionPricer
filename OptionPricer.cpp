@@ -121,8 +121,7 @@ public:
         if (ret_json.has_field(U("symbols"))) {
             auto symbols = ret_json.at(U("symbols")).as_array();
 
-            ucout << "Num of tickers returned =" << symbols.size() << std::endl;
-
+            //ucout << "Num of tickers returned =" << symbols.size() << std::endl;
             auto ticker = symbols[0];
 
             this->prev_close    = ticker.at(U("prevDayClosePrice")).as_double();
@@ -215,17 +214,6 @@ void get_ticker()
     else {
         ucout << "ERROR FETCHING TICKER" << std::endl;
     }
-}
-
-std::tm convert_to_time(const std::string& dt) {
-    std::tm date;
-    // FIXME Don't think hours,min and sec are saved properly
-    sscanf(dt.c_str(), "%4d-%2d-%02dT%02d:%2d:%2d",
-        &date.tm_year, &date.tm_mon, &date.tm_mday, &date.tm_hour, &date.tm_min, &date.tm_sec);
-
-    //printf("Time is %0d %0d %0d %02:%02:%02", date.tm_year, date.tm_mon, date.tm_mday, date.tm_hour, date.tm_min, date.tm_sec);
-
-    return date;
 }
 
 /*
@@ -347,22 +335,23 @@ void get_option_market_quotes(optionmap& opt_map)
     Function:
         clean_opt_map
     Parameter:
-        optionmap opt_map = Map containing option chain info to be cleaned
+        optionmap opt_map : Map containing option chain info to be cleaned
+        double min_iv : Implied volatility cutoff used to filter out options
     Description:
-        Currently removing all options with a IV ~= 0
+        Currently removing all options with a IV <= min_iv
 
     Todo:
         - Remove options with gamma < 0.3 ?
         - 
 */
-void clean_opt_map(optionmap& opt_map, int debug = 0) {
+void clean_opt_map(optionmap& opt_map, int debug = 0, double min_iv = 0.0) {
     int opt_size = opt_map[expiry_date].size();
     int i = 0;
     int num_removed = 0;
 
     while (i < opt_size) {
-        if (opt_map[expiry_date][i].volatility == 0) {
-            if (debug) std::cout << "Volatility at index = " << i << " is close to 0!" << std::endl;
+        if (opt_map[expiry_date][i].volatility == min_iv) {
+            if (debug) std::cout << "Volatility at index = " << i << " is <= " << min_iv << std::endl;
             opt_map[expiry_date].erase(opt_map[expiry_date].begin() + i - num_removed);
             opt_size--;
         }
@@ -432,34 +421,63 @@ void get_current_pos(utility::string_t id, std::vector<Position> & positions)
     }
 }
 
+
+void filter_by_iv(std::vector<Option> &opts) {
+    std::sort(opts.begin(), opts.end(), [](Option i, Option j) {
+        return (i.volatility > j.volatility); // Sort by high iv -> low iv
+    });
+}
+
 void get_high_iv_calls(std::vector<Position> positions,  double min_iv = 0.0) {
     optionmap opt_map;
-    //for (int i = 0; i < positions.size(); i++) {
+    std::cout << "\n -------------- Current Account Positions -------------\n" << std::endl;
+
     for (const Position pos: positions) {
         //ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares wor$th a total of $" << positions[i].cur_market_val << std::endl;
         //if (positions[i].open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
-        ucout << "Grabbed ticker = " << pos.symbol << " Currently have " << pos.open_quantity << " shares worth a total of $" 
-            << pos.cur_market_val << std::endl;
-        
-        get_option_data(pos.symbol_id, opt_map, 1, 10);
+        ucout << "Symbol = "        << std::setw(7) << pos.symbol
+            << "  Quantity = "      << std::setw(3) << pos.open_quantity
+            << "  Current Price = $" << std::setw(6) << pos.cur_price << std::endl;
+            //<< "  Value=$" << std::setw(8) << pos.cur_market_val << std::endl;
+        Symbol temp_sym(pos.symbol_id);
+        if (temp_sym.has_options)
+            get_option_data(pos.symbol_id, opt_map, 1, 10);
     };
-
 
     get_option_market_quotes(opt_map);
     clean_opt_map(opt_map);
+
+    filter_by_iv(opt_map[expiry_date]);
+
+    std::cout << "\n -------------- Filtered Option Chain -------------\n" << std::endl;
+    for (const Option& opt : opt_map[expiry_date]) {
+        std::cout << "  Symbol=" << std::setw(5) << opt.symbol;
+        std::cout << "  Strike=" << std::setw(7) << opt.strike;
+        std::cout << "  IV="     << std::setw(7) << opt.volatility;
+        std::cout << "  Delta="  << std::setw(8) << opt.delta;
+        std::cout << "  Gamma="  << std::setw(8) << opt.gamma;
+        std::cout << "  Theta="  << std::setw(8) << opt.theta;
+        //std::cout << " Vega=" << opt.vega;
+        //std::cout << " Rho=" << opt.rho;
+        std::cout << std::endl;
+    }
+
 }
 
 void recommend_cc(std::vector<Position> positions) {
     optionmap opt_map;
+    std::vector<Symbol> valid_sym;
 
     std::cout << " -------------- Current Positions above 100 Shares -------------" << std::endl;
-     
-    for (int i = 0; i < positions.size(); i++) {
+    for (const Position &pos: positions) {
         //ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares wor$th a total of $" << positions[i].cur_market_val << std::endl;
-        //if (positions[i].open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
-        if (positions[i].open_quantity >= 30) {
-            ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares worth a total of $" << positions[i].cur_market_val << std::endl;
-            get_option_data(positions[i].symbol_id, opt_map, 1, 10);
+        if (pos.open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
+            ucout << "Grabbed ticker = " << pos.symbol << " Currently have " << pos.open_quantity << 
+                " shares worth a total of $" << pos.cur_market_val << std::endl;
+            
+            Symbol temp_sym(pos.symbol_id);
+            if (temp_sym.has_options)
+                get_option_data(pos.symbol_id, opt_map, 1, 10);
         }
     };
 
@@ -520,7 +538,8 @@ int main(int argc, char* argv[])
     get_current_pos(userid, positions);
 
     // TODO select function based on input arguments
-    recommend_cc(positions);
+    //recommend_cc(positions);
+    get_high_iv_calls(positions, 50.0); // Default min_iv set to 50%
 
     // Some samples of function usage found below...
     /*

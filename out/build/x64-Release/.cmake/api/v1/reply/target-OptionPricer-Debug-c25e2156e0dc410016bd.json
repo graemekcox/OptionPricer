@@ -145,7 +145,8 @@
 			[
 				1,
 				2,
-				3
+				3,
+				4
 			]
 		}
 	],
@@ -170,6 +171,11 @@
 		{
 			"backtrace" : 2,
 			"path" : "includes/option_funcs.h",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"path" : "includes/Symbol.h",
 			"sourceGroupIndex" : 1
 		}
 	],
