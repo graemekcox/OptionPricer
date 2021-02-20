@@ -88,6 +88,8 @@ static const utility::string_t s_qtrade_secret  = U("");
 static const utility::string_t s_auth_endpoint  = U("https://login.questrade.com/oauth2/authorize");
 static const utility::string_t s_token_endpoint = U("https://login.questrade.com/oauth2/token");
 static const utility::string_t s_redirect_uri   = U("http://localhost:8888/");
+               std::string     expiry_date      = "2021-02-26T00:00:00.000000-05:00"; // Array of options is stored by expiry date
+
 
 static const std::string api_server = "https://api07.iq.questrade.com/"; // FIXME This should be returned in our auth flow
 
@@ -278,8 +280,8 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
     ucout << "Requesting Option Data for id:" << id << std::endl;
 
     const json::value& ret_json = api.request(methods::GET).get().extract_json().get();
-    //ucout << "Information: " << ret_json
-    //    << std::endl;
+    //ucout << "Information: " << ret_json << std::endl;
+    //ucout << utility::conversions::to_string_t(api_url) << std::endl;
 
     if (ret_json.has_field(U("optionChain"))) {
         auto options = ret_json.at(U("optionChain")).as_array();
@@ -288,8 +290,8 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
             auto opt = options[exp_cnt];
 
             utility::string_t desc = opt.at(U("description")).as_string();
-            std::string expiry = utility::conversions::to_utf8string(opt.at(U("expiryDate")).as_string());
-            std::cout << "Grab options chain for expiry = " << expiry << std::endl;
+            expiry_date = utility::conversions::to_utf8string(opt.at(U("expiryDate")).as_string());
+            std::cout << "Grab options chain for expiry = " << expiry_date << std::endl;
 
             auto chain_per_root = opt.at(U("chainPerRoot")).as_array();
             auto cpr = chain_per_root[0]; // TODO check when this type has more than 1 chain_per_root
@@ -303,9 +305,9 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
 
                 option.strike = cps.at(U("strikePrice")).as_double();
                 option.id = cps.at(U("callSymbolId")).as_integer(); // FIXME Hardcode to only look at calls for now
-                option.expiry = expiry;
+                option.expiry = expiry_date;
 
-                opt_map[expiry].push_back(option);
+                opt_map[expiry_date].push_back(option);
             }
         }
     }
@@ -320,9 +322,8 @@ void get_option_market_quotes(optionmap& opt_map)
     //const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id)) + "/options";
     const std::string api_url = api_server + "v1/markets/quotes/options";
 
-    std::string exp = "2021-02-19T00:00:00.000000-05:00"; // Array of options is stored by expiry date
     
-    std::vector<Option> temp_array = opt_map[exp];
+    std::vector<Option> temp_array = opt_map[expiry_date];
     std::vector<int> temp_ids;
     for (const auto& ind : temp_array)
         temp_ids.push_back(ind.id);
@@ -356,12 +357,12 @@ void get_option_market_quotes(optionmap& opt_map)
         for (int i = 0; i < options.size(); i++) {
             auto opt = options[i];
 
-            opt_map[exp][i].volatility = opt.at(U("volatility")).as_double();
-            opt_map[exp][i].delta = opt.at(U("delta")).as_double();
-            opt_map[exp][i].gamma = opt.at(U("gamma")).as_double();
-            opt_map[exp][i].theta = opt.at(U("theta")).as_double();
-            opt_map[exp][i].vega = opt.at(U("vega")).as_double();
-            opt_map[exp][i].rho = opt.at(U("rho")).as_double();
+            opt_map[expiry_date][i].volatility = opt.at(U("volatility")).as_double();
+            opt_map[expiry_date][i].delta = opt.at(U("delta")).as_double();
+            opt_map[expiry_date][i].gamma = opt.at(U("gamma")).as_double();
+            opt_map[expiry_date][i].theta = opt.at(U("theta")).as_double();
+            opt_map[expiry_date][i].vega = opt.at(U("vega")).as_double();
+            opt_map[expiry_date][i].rho = opt.at(U("rho")).as_double();
         }
     }
 }
@@ -469,14 +470,28 @@ int main(int argc, char* argv[])
     */
 
     optionmap opt_map;
+    // FIXME Right now just hardcoded to grab AAPL calls
     get_option_data(8049, opt_map);
-    for (auto& x : opt_map) {
-        std::cout << x.first << " Size=" << x.second.size() << std::endl;
+    // Now need to fill in all option greeks since we have option IDs.
+    get_option_market_quotes(opt_map);
+
+    const auto options_list = opt_map[expiry_date];
+
+    for (const Option& opt : options_list) {
+        std::cout << "ID=" << opt.id;
+        std::cout << " Strike=" << opt.strike;
+        std::cout << " Volatility=" << opt.volatility;
+        std::cout << " Delta=" << opt.delta;
+        std::cout << " Gamma=" << opt.gamma;
+        std::cout << " Theta=" << opt.theta;
+        std::cout << " Vega=" << opt.vega;
+        std::cout << " Rho=" << opt.rho;
+        std::cout << std::endl;
     }
 
-    // Now need to fill in all option greeks since we have option IDs.
 
-    get_option_market_quotes(opt_map);
+    // Some samples of function usage found below...
+    /*
     //get_ticker_data(19719);
 
     //utility::string_t userid = get_userid();
@@ -484,21 +499,22 @@ int main(int argc, char* argv[])
     //std::vector<Symbol> valid_symbols;
     //get_current_pos(userid, positions);
 
-    //for (int i = 0; i < positions.size(); i++) {
-    //    ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares worth a total of $"
-    //        << positions[i].cur_market_val << std::endl;
+    for (int i = 0; i < positions.size(); i++) {
+        ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares worth a total of $"
+            << positions[i].cur_market_val << std::endl;
 
-    //    if (positions[i].open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
-    //        Symbol sym(positions[i].symbol_id);
+        if (positions[i].open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
+            Symbol sym(positions[i].symbol_id);
 
-    //        if (sym.has_options) // Make sure that this ticker actually has options
-    //            valid_symbols.push_back(sym);
-    //    }
-    //};
+            if (sym.has_options) // Make sure that this ticker actually has options
+                valid_symbols.push_back(sym);
+        }
+    };
    
-    //for (int i = 0; i < valid_symbols.size(); i++) {
-    //    get_option_data(valid_symbols[i].symbol_id);
-    //}
+    for (int i = 0; i < valid_symbols.size(); i++) {
+        get_option_data(valid_symbols[i].symbol_id);
+    }
+    */
 
     std::cout << "Done" << std::endl;
     return 0;
