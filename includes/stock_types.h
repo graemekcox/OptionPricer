@@ -11,7 +11,33 @@ struct Position {
     double total_cost = 0; // Total cost of position
 };
 
+struct Option {
+    std::string symbol;
+    int id;
+    double strike;
+    std::string expiry;
+    double volatility;
+    double delta;
+    double gamma;
+    double theta;
+    double vega;
+    double rho;
+};
 
+
+// Store options chains by expiration date
+/*
+    OptionMap  std::map< expiry, array of options>
+        |
+        --> Feb 12th
+            [0] --> {strike, rho, id}
+            [1] --> {strike, rho, id}
+        --> Feb 19th
+            [0] --> {strike, rho, id}
+            [1] --> {strike, rho, id}
+        .....
+*/
+typedef std::map<std::string, std::vector<Option>> optionmap;
 
 
 #endif

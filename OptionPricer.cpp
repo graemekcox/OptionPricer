@@ -152,51 +152,23 @@ public:
     }
 };
 
-struct Option {
-    int id;
-    double strike;
-    std::string expiry;
-    double volatility;
-    double delta;
-    double gamma;
-    double theta;
-    double vega;
-    double rho;
-};
 
-typedef std::map<std::string, std::vector<Option>> optionmap;
-
+/*
+    Function:
+        get_userid
+    Return:
+        string_t : Currently logged in account user id 
+    Description:
+        Request account info information and return user id
+*/
 utility::string_t get_userid() // Return user id
 {
     const std::string api_url = api_server + "v1/accounts/";
     http_client api(uri(utility::conversions::to_string_t(api_url)), m_http_config);
 
-    ucout << "Requesting account information:" << std::endl;
+    //ucout << "Requesting account information:" << std::endl;
 
     const json::value & ret_json = api.request(methods::GET).get().extract_json().get();
-    ucout << "Information: " << ret_json
-        << std::endl;
-
-    //auto array = ret_json.at(U("userId")).as_array();
-
-    //std::cout << "\nparse json data here!";
-    //const json::value& v = previousTask.get();
-
-    //utility::string_t jsonval = v.serialize();
-
-    //std::wcout << jsonval;
-
-    //auto array = v.at(U("row")).as_array();
-    //for (int i = 0; i < array.size(); i++) {
-    //    auto id = array[i].at(U("id")).as_string();
-    //    std::wcout << "\n" << id;
-    //    auto key = array[i].at(U("key")).as_string();
-    //    std::wcout << "\n" << key;
-    //    auto array2 = array[i].at(U("value")).as_array();
-
-    //    std::wcout << array2[0];
-    //    std::wcout << array2[1];
-    //}
 
     utility::string_t account_num = U("-1");
     if (ret_json.has_field(U("accounts"))) {
@@ -204,19 +176,13 @@ utility::string_t get_userid() // Return user id
         for (int i = 0; i < accounts.size(); i++) {
             account_num= accounts[i].at(U("number")).as_string();
             // TODO maybe add some checking for account status? or account type?
-            std::wcout << account_num<< std::endl;
         }
-        //id = ret_json.at(U("userId")).as_integer();
-        ucout << "UserId = " << account_num<< std::endl;
     }
-    //if (ret_json.has_field(U("userId"))) {
-    //    id = ret_json.at(U("userId")).as_integer();
-    //    std::wcout << "UserId = " << id << std::endl;
-    //}
+
     return account_num;
 }
 
-void get_ticker() // Return user id
+void get_ticker()
 {
 
     http_client api(U("https://api05.iq.questrade.com/v1/symbols/8049"), m_http_config);
@@ -230,8 +196,7 @@ void get_ticker() // Return user id
     if (ret_json.has_field(U("symbols"))) {
         auto symbols = ret_json.at(U("symbols")).as_array();
 
-        ucout << "Num of tickers returned =" << symbols.size() << std::endl;
-
+        //ucout << "Num of tickers returned =" << symbols.size() << std::endl;
         auto ticker = symbols[0];
 
         double closePrice = ticker.at(U("prevDayClosePrice")).as_double();
@@ -277,8 +242,6 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
     const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id)) +"/options";
     http_client api(uri(utility::conversions::to_string_t(api_url)), m_http_config);
 
-    ucout << "Requesting Option Data for id:" << id << std::endl;
-
     const json::value& ret_json = api.request(methods::GET).get().extract_json().get();
     //ucout << "Information: " << ret_json << std::endl;
     //ucout << utility::conversions::to_string_t(api_url) << std::endl;
@@ -290,8 +253,8 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
             auto opt = options[exp_cnt];
 
             utility::string_t desc = opt.at(U("description")).as_string();
-            expiry_date = utility::conversions::to_utf8string(opt.at(U("expiryDate")).as_string());
-            std::cout << "Grab options chain for expiry = " << expiry_date << std::endl;
+            //expiry_date = utility::conversions::to_utf8string(opt.at(U("expiryDate")).as_string());
+            //std::cout << "Grab options chain for expiry = " << expiry_date << std::endl;
 
             auto chain_per_root = opt.at(U("chainPerRoot")).as_array();
             auto cpr = chain_per_root[0]; // TODO check when this type has more than 1 chain_per_root
@@ -301,7 +264,7 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
                 Option option;
                 // TODO Maybe start at index = current stock price. Then just look at OTM calls?
                 auto cps = chain_per_strike[i];
-                //ucout << "Strike=" << cps.at(U("strikePrice")).as_double() << " Call_id = " << cps.at(U("callSymbolId")).as_integer() << std::endl;
+                //ucout << desc << " Strike=" << cps.at(U("strikePrice")).as_double() << " Call_id = " << cps.at(U("callSymbolId")).as_integer() << std::endl;
 
                 option.strike = cps.at(U("strikePrice")).as_double();
                 option.id = cps.at(U("callSymbolId")).as_integer(); // FIXME Hardcode to only look at calls for now
@@ -369,6 +332,7 @@ void get_option_market_quotes(optionmap& opt_map)
         for (int i = 0; i < options.size(); i++) {
             auto opt = options[i];
 
+            opt_map[expiry_date][i].symbol = utility::conversions::to_utf8string(opt.at(U("underlying")).as_string());
             opt_map[expiry_date][i].volatility = opt.at(U("volatility")).as_double();
             opt_map[expiry_date][i].delta = opt.at(U("delta")).as_double();
             opt_map[expiry_date][i].gamma = opt.at(U("gamma")).as_double();
@@ -391,19 +355,19 @@ void get_option_market_quotes(optionmap& opt_map)
         - Remove options with gamma < 0.3 ?
         - 
 */
-void clean_opt_map(optionmap& opt_map) {
+void clean_opt_map(optionmap& opt_map, int debug = 0) {
     int opt_size = opt_map[expiry_date].size();
     int i = 0;
     int num_removed = 0;
 
     while (i < opt_size) {
         if (opt_map[expiry_date][i].volatility == 0) {
-            std::cout << "Volatility at index = " << i << " is close to 0!" << std::endl;
+            if (debug) std::cout << "Volatility at index = " << i << " is close to 0!" << std::endl;
             opt_map[expiry_date].erase(opt_map[expiry_date].begin() + i - num_removed);
             opt_size--;
         }
         else {
-            std::cout << "Volatility at index = " << i << " is " << opt_map[expiry_date][i].volatility << std::endl;
+            if (debug) std::cout << "Volatility at index = " << i << " is " << opt_map[expiry_date][i].volatility << std::endl;
             i++;
         }
     }
@@ -468,6 +432,60 @@ void get_current_pos(utility::string_t id, std::vector<Position> & positions)
     }
 }
 
+void get_high_iv_calls(std::vector<Position> positions,  double min_iv = 0.0) {
+    optionmap opt_map;
+    //for (int i = 0; i < positions.size(); i++) {
+    for (const Position pos: positions) {
+        //ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares wor$th a total of $" << positions[i].cur_market_val << std::endl;
+        //if (positions[i].open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
+        ucout << "Grabbed ticker = " << pos.symbol << " Currently have " << pos.open_quantity << " shares worth a total of $" 
+            << pos.cur_market_val << std::endl;
+        
+        get_option_data(pos.symbol_id, opt_map, 1, 10);
+    };
+
+
+    get_option_market_quotes(opt_map);
+    clean_opt_map(opt_map);
+}
+
+void recommend_cc(std::vector<Position> positions) {
+    optionmap opt_map;
+
+    std::cout << " -------------- Current Positions above 100 Shares -------------" << std::endl;
+     
+    for (int i = 0; i < positions.size(); i++) {
+        //ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares wor$th a total of $" << positions[i].cur_market_val << std::endl;
+        //if (positions[i].open_quantity >= 100) { // We'll grab options data only for tickers where we can write covered calls
+        if (positions[i].open_quantity >= 30) {
+            ucout << "Grabbed ticker = " << positions[i].symbol << " Currently have " << positions[i].open_quantity << " shares worth a total of $" << positions[i].cur_market_val << std::endl;
+            get_option_data(positions[i].symbol_id, opt_map, 1, 10);
+        }
+    };
+
+    if (opt_map[expiry_date].size() == 0) {
+        std::cout << "No current positions have at least 100 shares. Cannot write covered calls" << std::endl;
+        return;
+    }
+
+    get_option_market_quotes(opt_map);
+    clean_opt_map(opt_map);
+    auto options_list = opt_map[expiry_date];
+
+    std::cout << " -------------- Filtered Option Chain -------------" << std::endl;
+    for (const Option& opt : options_list) {
+        std::cout <<  "Symbol=" << std::setw(5)     << opt.symbol;
+        std::cout << "  Strike="  << std::setw(7)   << opt.strike;
+        std::cout << "  IV=" << std::setw(7) << opt.volatility;
+        std::cout << "  Delta=" << std::setw(8)      << opt.delta;
+        std::cout << "  Gamma=" << std::setw(8)      << opt.gamma;
+        std::cout << "  Theta=" << std::setw(8)      << opt.theta;
+        //std::cout << " Vega=" << opt.vega;
+        //std::cout << " Rho=" << opt.rho;
+        std::cout << std::endl;
+    }
+}
+
 /*
 Project Ideas:
 - Calculate net gains after taxes depending on exchange?
@@ -477,8 +495,6 @@ Project Ideas:
 
 int main(int argc, char* argv[])
 {
-    std::cout << "Running OAuth 2.0 client sample" << std::endl;    
-
     ucout << "Running session..." << std::endl;
 
     if (!m_oauth2_config.token().is_valid_access_token())
@@ -491,46 +507,20 @@ int main(int argc, char* argv[])
         m_http_config.set_oauth2(m_oauth2_config);
     }
 
-    // GME = 19719 -> option_chain_size = 217
-    // AAPL = 8049 -> option_chain_size = 79
-    // BB.TO = 4117087 -> option_chain_size = 55
-    // BB = 4117088 -> option_chain_size = 56
-    // PLTR = 32466046 -> option_chain_size = 53
-    
-    // Store options chains by expiration date
-    /*
-        OptionMap  std::map< expiry, array of options>
-            |
-            --> Feb 12th
-                [0] --> {strike, rho, id}
-                [1] --> {strike, rho, id}
-            --> Feb 19th
-                [0] --> {strike, rho, id}
-                [1] --> {strike, rho, id}
-            .....
-    */
+    utility::string_t userid = get_userid();
 
-    optionmap opt_map;
-    // FIXME Right now just hardcoded to grab AAPL calls
-    get_option_data(8049, opt_map, 1, 15);
-    // Now need to fill in all option greeks since we have option IDs.
-    get_option_market_quotes(opt_map);
-    clean_opt_map(opt_map);
-
-    auto options_list = opt_map[expiry_date];
-
-    std::cout << " -------------- New list -------------" << std::endl;
-    for (const Option& opt : options_list) {
-        std::cout << "ID=" << opt.id;
-        std::cout << " Strike=" << opt.strike;
-        std::cout << " Volatility=" << opt.volatility;
-        std::cout << " Delta=" << opt.delta;
-        std::cout << " Gamma=" << opt.gamma;
-        std::cout << " Theta=" << opt.theta;
-        //std::cout << " Vega=" << opt.vega;
-        //std::cout << " Rho=" << opt.rho;
-        std::cout << std::endl;
+    if (userid == U("-1")) {
+        std::cout << "ERROR: User id was not properly fetched. Check access token and auth header" << std::endl;
+        return 0;
     }
+
+    // Grab accounts current positions
+    std::vector<Position> positions;
+    std::vector<Symbol> valid_symbols;
+    get_current_pos(userid, positions);
+
+    // TODO select function based on input arguments
+    recommend_cc(positions);
 
     // Some samples of function usage found below...
     /*
@@ -561,13 +551,3 @@ int main(int argc, char* argv[])
     std::cout << "Done" << std::endl;
     return 0;
 }
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file

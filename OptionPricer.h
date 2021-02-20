@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <iomanip> // For cout string formatting
 
 #include <ctime>
 #include <cpprest/http_client.h>
