@@ -263,10 +263,10 @@ std::tm convert_to_time(const std::string& dt) {
     return date;
 }
 
-
 /*
-    function: get_option_data
-    Parameters
+    Function: 
+        get_option_data
+    Parameters:
         int id = API Symbol Identifer. Ex: AAPL = 8049
         optionmap opt_map = Map to store option chain data we'll use to make requests later
         int num_expiry = Number of options expiration dates to loop through. Defaults to 1, which is weekly options;
@@ -316,7 +316,19 @@ void get_option_data(int id, optionmap& opt_map, int num_expiry=1, int num_optio
     }
 }
 
+/*
+    Function:
+        get_option_market_quotes
+    Parameters:
+        optionmap opt_map = Map containing store option chain data such as option IDs. We will update the options info stored here
+    Description:
+        API requires us to make requests with specific option IDs to pull specific greeks. Use list of option IDs to update
+        option chain data stored in opt_data with any specific information.
+        Currently mainly focusing on greeks, but can also grab bid/ask, volumes, etc
 
+        API found at: https://www.questrade.com/api/documentation/rest-operations/market-calls/markets-quotes-options
+
+*/
 void get_option_market_quotes(optionmap& opt_map)
 {
     //const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id)) + "/options";
@@ -367,6 +379,37 @@ void get_option_market_quotes(optionmap& opt_map)
     }
 }
 
+/*
+    Function:
+        clean_opt_map
+    Parameter:
+        optionmap opt_map = Map containing option chain info to be cleaned
+    Description:
+        Currently removing all options with a IV ~= 0
+
+    Todo:
+        - Remove options with gamma < 0.3 ?
+        - 
+*/
+void clean_opt_map(optionmap& opt_map) {
+    int opt_size = opt_map[expiry_date].size();
+    int i = 0;
+    int num_removed = 0;
+
+    while (i < opt_size) {
+        if (opt_map[expiry_date][i].volatility == 0) {
+            std::cout << "Volatility at index = " << i << " is close to 0!" << std::endl;
+            opt_map[expiry_date].erase(opt_map[expiry_date].begin() + i - num_removed);
+            opt_size--;
+        }
+        else {
+            std::cout << "Volatility at index = " << i << " is " << opt_map[expiry_date][i].volatility << std::endl;
+            i++;
+        }
+    }
+}
+
+
 void get_ticker_data(int id) {
 
     const std::string api_url = api_server + "v1/symbols/" + utility::conversions::to_utf8string(std::to_string(id));
@@ -391,8 +434,6 @@ void get_ticker_data(int id) {
     ucout << sym << " : high = " << high_price << "\nAvg Vol 3mon = " << avg_vol_3mon << " 20day = " << avg_vol_20day;
     ucout << "\n Outstanding Shares = " << outstanding_shares << std::endl;
 }
-
-
 void get_current_pos(utility::string_t id, std::vector<Position> & positions) 
 {
     const std::string api_url = api_server + "v1/accounts/" + utility::conversions::to_utf8string(id) + "/positions";
@@ -471,12 +512,14 @@ int main(int argc, char* argv[])
 
     optionmap opt_map;
     // FIXME Right now just hardcoded to grab AAPL calls
-    get_option_data(8049, opt_map);
+    get_option_data(8049, opt_map, 1, 15);
     // Now need to fill in all option greeks since we have option IDs.
     get_option_market_quotes(opt_map);
+    clean_opt_map(opt_map);
 
-    const auto options_list = opt_map[expiry_date];
+    auto options_list = opt_map[expiry_date];
 
+    std::cout << " -------------- New list -------------" << std::endl;
     for (const Option& opt : options_list) {
         std::cout << "ID=" << opt.id;
         std::cout << " Strike=" << opt.strike;
@@ -484,11 +527,10 @@ int main(int argc, char* argv[])
         std::cout << " Delta=" << opt.delta;
         std::cout << " Gamma=" << opt.gamma;
         std::cout << " Theta=" << opt.theta;
-        std::cout << " Vega=" << opt.vega;
-        std::cout << " Rho=" << opt.rho;
+        //std::cout << " Vega=" << opt.vega;
+        //std::cout << " Rho=" << opt.rho;
         std::cout << std::endl;
     }
-
 
     // Some samples of function usage found below...
     /*
